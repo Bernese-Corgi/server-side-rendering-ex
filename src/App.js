@@ -1,5 +1,5 @@
 import { Route } from 'react-router';
-import { BluePage, RedPage } from './pages';
+import { BluePage, RedPage, UsersPage } from './pages';
 import { Menu } from './components';
 
 function App() {
@@ -9,6 +9,7 @@ function App() {
       <hr />
       <Route path="/red" component={RedPage} />
       <Route path="/blue" component={BluePage} />
+      <Route path="/users" component={UsersPage} />
     </div>
   );
 }
