@@ -6,10 +6,11 @@ import App from './App';
 import path from 'path';
 import fs from 'fs';
 import { applyMiddleware, createStore } from 'redux';
-import rootReducer from './modules';
+import rootReducer, { rootSaga } from './modules';
 import thunk from 'redux-thunk';
 import PreloadContext from './lib/PreloadContext';
 import { Provider } from 'react-redux';
+import createSagaMiddleware, { END } from '@redux-saga/core';
 
 // asset-manifest.json에서 파일 경로들을 조회
 const manifest = JSON.parse(
@@ -57,8 +58,21 @@ const serverRender = async (req, res, next) => {
 
   const context = {};
 
+  // saga
+  const sagaMiddleware = createSagaMiddleware();
+
   // 서버에서 리덕스 설정 (브라우저에서 할 때와 큰 차이 없다.)
-  const store = createStore(rootReducer, applyMiddleware(thunk));
+  const store = createStore(
+    rootReducer,
+    applyMiddleware(thunk, sagaMiddleware)
+  );
+
+  /**
+   * toPromise는 sagaMiddleware.run을 통해 만든 Task를 Promise로 변환
+   * 우리가 만든 루트 사가에서 액션을 끝없이 모니터링하기 때문에, 별도의 작업을 하지 않으면 이 Promise는 끝나지 않는다.
+   * END 액션을 발생시키면 이 Promise를 끝낼 수 있다.
+   */
+  const sagaPromise = sagaMiddleware.run(rootSaga).toPromise();
 
   // PreloadContext를 사용해 프로미스들을 수집하고 기다렸다가 다시 렌더링
   const preloadContext = {
@@ -84,15 +98,27 @@ const serverRender = async (req, res, next) => {
     </PreloadContext.Provider>
   );
 
-  /** 첫 번째 렌더링
-   * renderToStaticMarkup
+  /* 첫 번째 렌더링 -------------------------------- */
+  /** renderToStaticMarkup
    * 리액트를 사용하여 정적인 페이지를 만들 때 사용
    * 이 함수로 만든 리액트 렌더링 결과물은 클라이언트 쪽에서 HTML DOM 인터랙션을 지원하기 어렵다
    * 이 함수를 사용하는 이유는 Preloader로 넣은 함수를 호출하기 위함이다.
    * renderToString보다 renderToStaticMarkup가 처리속도가 좀 더 빠르다.
    */
   ReactDOMServer.renderToStaticMarkup(jsx);
+
+  /** END
+   * redux-saga의 END 액션을 발생되면,
+   * 액션 모니터링 작업이 모두 종료
+   * 모니터링되기 전에 시작된 사가 함수들이 있다면 (getUserSaga) 해당 함수들이 완료되고 나서 Promise가 끝나게 된다.
+   * 이 Promise가 끝나는 시점에 리덕스 스토어에는 우리가 원하는 데이터가 채워진다.
+   * 그 이후에 다시 렌더링하면 우리가 원하는 결과물이 나타난다.
+   */
+  store.dispatch(END); // redux-saga 의 END 액션을 발생시키면 액션을 모니터링하는 saga 들이 모두 종료된다.
+
   try {
+    // 기존에 진행중이던 saga 들이 모두 끝날때까지 기다린다.
+    await sagaPromise;
     // 모든 프로미스를 기다린다.
     await Promise.all(preloadContext.promises);
   } catch (e) {
