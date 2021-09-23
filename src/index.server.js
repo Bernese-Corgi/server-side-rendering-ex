@@ -5,6 +5,10 @@ import { StaticRouter } from 'react-router';
 import App from './App';
 import path from 'path';
 import fs from 'fs';
+import { applyMiddleware, createStore } from 'redux';
+import rootReducer from './modules';
+import thunk from 'redux-thunk';
+import PreloadContext from './lib/PreloadContext';
 
 // asset-manifest.json에서 파일 경로들을 조회
 const manifest = JSON.parse(
@@ -45,24 +49,52 @@ function createPage(root, tags) {
 const app = express();
 
 // 서버 사이드 렌더링을 처리할 핸들러 함수
-const serverRender = (req, res, next) => {
+const serverRender = async (req, res, next) => {
   // 404를 띄워야 할 상황에 404 에러 대신 서버 사이드 렌더링을 하는 함수
 
   const context = {};
+
+  // 서버에서 리덕스 설정 (브라우저에서 할 때와 큰 차이 없다.)
+  const store = createStore(rootReducer, applyMiddleware(thunk));
+
+  // PreloadContext를 사용해 프로미스들을 수집하고 기다렸다가 다시 렌더링
+  const preloadContext = {
+    done: false,
+    promises: [],
+  };
 
   /**
    * StaticRouter 컴포넌트
    * 주로 서버 사이드 렌더링 용도로 사용되는 라우터 컴포넌트
    */
   const jsx = (
-    <StaticRouter
-      // location에 넣는 값에 따라 라우팅한다.
-      location={req.url} // req 객체는 요청에 대한 정보를 가지고 있다.
-      // context 값을 사용해 나중에 렌더링한 컴포넌트에 따라 HTTP 상태 코드를 설정할 수 있다.
-      context={context}>
-      <App />
-    </StaticRouter>
+    <PreloadContext.Provider store={store} value={preloadContext}>
+      <StaticRouter
+        // location에 넣는 값에 따라 라우팅한다.
+        location={req.url} // req 객체는 요청에 대한 정보를 가지고 있다.
+        // context 값을 사용해 나중에 렌더링한 컴포넌트에 따라 HTTP 상태 코드를 설정할 수 있다.
+        context={context}>
+        <App />
+      </StaticRouter>
+    </PreloadContext.Provider>
   );
+
+  /** 첫 번째 렌더링
+   * renderToStaticMarkup
+   * 리액트를 사용하여 정적인 페이지를 만들 때 사용
+   * 이 함수로 만든 리액트 렌더링 결과물은 클라이언트 쪽에서 HTML DOM 인터랙션을 지원하기 어렵다
+   * 이 함수를 사용하는 이유는 Preloader로 넣은 함수를 호출하기 위함이다.
+   * renderToString보다 renderToStaticMarkup가 처리속도가 좀 더 빠르다.
+   */
+  ReactDOMServer.renderToStaticMarkup(jsx);
+  try {
+    // 모든 프로미스를 기다린다.
+    await Promise.all(preloadContext.promises);
+  } catch (e) {
+    return res.status(500);
+  }
+
+  preloadContext.done = true;
 
   const root = ReactDOMServer.renderToString(jsx); // 렌더링
   res.send(createPage(root)); // 클라이언트에게 결과물을 응답한다.
