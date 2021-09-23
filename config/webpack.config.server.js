@@ -150,7 +150,11 @@ module.exports = {
     // 코드에서 node_modules 내부의 라이브러리를 불러올 수 있다.
     modules: ['node_modules'],
   },
-  externals: [nodeExternals()],
+  externals: [
+    nodeExternals({
+      allowlist: [/@babel/],
+    }),
+  ],
   plugins: [
     new webpack.DefinePlugin(env.stringified), // 환경변수를 주입해줍니다.
   ],
