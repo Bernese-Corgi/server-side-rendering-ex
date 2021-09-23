@@ -9,6 +9,7 @@ import { applyMiddleware, createStore } from 'redux';
 import rootReducer from './modules';
 import thunk from 'redux-thunk';
 import PreloadContext from './lib/PreloadContext';
+import { Provider } from 'react-redux';
 
 // asset-manifest.json에서 파일 경로들을 조회
 const manifest = JSON.parse(
@@ -20,7 +21,7 @@ const chunks = Object.keys(manifest.files)
   .map(key => `<script src="${manifest.files[key]}"></script>`) // 스크립트 태그로 변환하고
   .join(''); // 합침
 
-function createPage(root, tags) {
+function createPage(root, stateScript) {
   return `<!DOCTYPE html>
     <html lang="en">
     <head>
@@ -39,6 +40,7 @@ function createPage(root, tags) {
       <div id="root">
         ${root}
       </div>
+      ${stateScript}
       <script src="${manifest.files['runtime-main.js']}"></script>
       ${chunks}
       <script src="${manifest.files['main.js']}"></script>
@@ -46,6 +48,7 @@ function createPage(root, tags) {
     </html>
       `;
 }
+
 const app = express();
 
 // 서버 사이드 렌더링을 처리할 핸들러 함수
@@ -68,14 +71,16 @@ const serverRender = async (req, res, next) => {
    * 주로 서버 사이드 렌더링 용도로 사용되는 라우터 컴포넌트
    */
   const jsx = (
-    <PreloadContext.Provider store={store} value={preloadContext}>
-      <StaticRouter
-        // location에 넣는 값에 따라 라우팅한다.
-        location={req.url} // req 객체는 요청에 대한 정보를 가지고 있다.
-        // context 값을 사용해 나중에 렌더링한 컴포넌트에 따라 HTTP 상태 코드를 설정할 수 있다.
-        context={context}>
-        <App />
-      </StaticRouter>
+    <PreloadContext.Provider value={preloadContext}>
+      <Provider store={store}>
+        <StaticRouter
+          // location에 넣는 값에 따라 라우팅한다.
+          location={req.url} // req 객체는 요청에 대한 정보를 가지고 있다.
+          // context 값을 사용해 나중에 렌더링한 컴포넌트에 따라 HTTP 상태 코드를 설정할 수 있다.
+          context={context}>
+          <App />
+        </StaticRouter>
+      </Provider>
     </PreloadContext.Provider>
   );
 
@@ -97,7 +102,13 @@ const serverRender = async (req, res, next) => {
   preloadContext.done = true;
 
   const root = ReactDOMServer.renderToString(jsx); // 렌더링
-  res.send(createPage(root)); // 클라이언트에게 결과물을 응답한다.
+
+  // JSON 을 문자열로 변환하고 악성스크립트가 실행되는것을 방지하기 위해서 < 를 치환처리
+  // https://redux.js.org/recipes/server-rendering#security-considerations
+  const stateString = JSON.stringify(store.getState()).replace(/</g, '\\u003c');
+  const stateScript = `<script>__PRELOADED_STATE__ = ${stateString}</script>`; // 리덕스 초기 상태를 스크립트로 주입합니다.
+
+  res.send(createPage(root, stateScript)); // 클라이언트에게 결과물을 응답한다.
 };
 
 const serve = express.static(path.resolve('./build'), {

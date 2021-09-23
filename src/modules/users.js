@@ -31,7 +31,6 @@ export const getUsers = () => async dispatch => {
 /* 초기 상태 --------------------------------- */
 const initialState = {
   users: null,
-  user: null,
   loading: {
     users: false,
     user: false,
@@ -50,6 +49,7 @@ function users(state = initialState, action) {
       return {
         ...state,
         loading: { ...state.loading, users: true },
+        error: { ...state.error, users: null },
       };
     case GET_USERS_SUCCESS:
       return {
