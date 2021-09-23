@@ -14,7 +14,7 @@ const sagaMiddleware = createSagaMiddleware();
 const store = createStore(
   rootReducer,
   window.__PRELOADED_STATE__, // 이 값을 초기상태로 사용함
-  applyMiddleware(thunk)
+  applyMiddleware(thunk, sagaMiddleware)
 );
 
 sagaMiddleware.run(rootSaga);

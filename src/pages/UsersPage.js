@@ -1,8 +1,17 @@
 import React from 'react';
-import { UsersContainer } from '../containers';
+import { Route } from 'react-router';
+import { UserContainer, UsersContainer } from '../containers';
 
 const UsersPage = () => {
-  return <UsersContainer />;
+  return (
+    <>
+      <UsersContainer />
+      <Route
+        path="/users/:id"
+        render={({ match }) => <UserContainer id={match.params.id} />}
+      />
+    </>
+  );
 };
 
 export default UsersPage;
