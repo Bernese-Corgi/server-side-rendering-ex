@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { connect } from 'react-redux';
 import { Users } from '../components';
+import { Preloader } from '../lib/PreloadContext';
 import { getUsers } from '../modules/users';
 
 const UsersContainer = ({ users, getUsers }) => {
@@ -11,7 +12,12 @@ const UsersContainer = ({ users, getUsers }) => {
     getUsers();
   }, [getUsers, users]);
 
-  return <Users users={users} />;
+  return (
+    <>
+      <Users users={users} />
+      <Preloader resolve={getUsers} />
+    </>
+  );
 };
 
 export default connect(
